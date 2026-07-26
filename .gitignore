@@ -1,0 +1,12 @@
+__pycache__/
+build/
+*.py[cod]
+*.spec
+
+# User-created axis data
+axes.json
+dist/axes.json
+
+# Keep the packaged application, ignore other generated dist files
+dist/*
+!dist/BlueArchive_axiseditor.exe
