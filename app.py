@@ -55,6 +55,7 @@ class Axis:
     url: str = ""
     tower_boss: str = ""
     armor: str = ""
+    view_note: str = ""
 
 
 class AxisStore:
@@ -387,6 +388,7 @@ class AxisEditor(tk.Tk):
         self.axis_layout = []
         self.nav("新建立")
         self.editing_id = axis.id if axis else None
+        self.view_note_value = axis.view_note if axis else ""
         scroll = ScrollFrame(self)
         scroll.pack(fill="both", expand=True)
         panel = tk.Frame(scroll.body, bg=COLORS["panel"], highlightthickness=1,
@@ -608,6 +610,9 @@ class AxisEditor(tk.Tk):
         axis_cell.grid(row=row_number, column=3, sticky="ew", pady=4)
         zone = DropZone(axis_cell, list(data.get("items", [])))
         zone.pack(side="left", fill="x", expand=True)
+        note_var = tk.StringVar(value=str(data.get("note", "")))
+        note_entry = ttk.Entry(axis_cell, textvariable=note_var, width=18)
+        note_entry.pack(side="left", padx=(8, 0))
         delete_button = tk.Button(
             axis_cell, text="X", cursor="hand2", bg=COLORS["danger"], fg="white",
             activebackground="#bd3e4a", activeforeground="white", relief="flat",
@@ -623,6 +628,7 @@ class AxisEditor(tk.Tk):
             "type": "axis", "c_var": c_var, "time_var": time_var, "zone": zone,
             "widgets": [handle, time_entry, c_entry, axis_cell],
             "anchor": axis_cell,
+            "note_var": note_var,
         }
         self.axis_layout.append(row_data)
         handle.bind("<ButtonPress-1>", lambda _e, row=row_data: self.start_row_drag(row))
@@ -798,6 +804,7 @@ class AxisEditor(tk.Tk):
                     "c": row["c_var"].get().strip(),
                     "time": row["time_var"].get().strip(),
                     "items": list(row["zone"].values),
+                    "note": row["note_var"].get(),
                 })
         first_axis_row = next((row for row in rows if row["type"] == "axis"), None)
         axis = Axis(
@@ -815,6 +822,7 @@ class AxisEditor(tk.Tk):
             url=self.url_var.get().strip(),
             tower_boss=self.boss_var.get() if mode == "爬塔" else "",
             armor=self.armor_var.get() if mode == "爬塔" else "",
+            view_note=self.view_note_value,
         )
         axes = self.store.load()
         match = next((i for i, item in enumerate(axes) if item.id == axis.id), None)
@@ -833,7 +841,9 @@ class AxisEditor(tk.Tk):
     def show_list(self) -> None:
         self.clear_window()
         self.nav("看軸")
-        body = tk.Frame(self, bg=COLORS["bg"])
+        scroll = ScrollFrame(self)
+        scroll.pack(fill="both", expand=True)
+        body = tk.Frame(scroll.body, bg=COLORS["bg"])
         body.pack(fill="both", expand=True, padx=55, pady=32)
         tk.Label(body, text="已儲存的軸", bg=COLORS["bg"], fg=COLORS["text"],
                  font=("Microsoft JhengHei UI", 22, "bold")).pack(anchor="w")
@@ -995,6 +1005,25 @@ class AxisEditor(tk.Tk):
             )
             link.pack(anchor="w", padx=30, pady=(0, 15))
             link.bind("<Button-1>", lambda _e, url=axis.url: self.open_url(url))
+        overview_note_var = tk.StringVar(value=axis.view_note)
+        overview_row = tk.Frame(panel, bg=COLORS["panel"])
+        overview_row.pack(fill="x", padx=30, pady=(0, 15))
+        tk.Label(
+            overview_row, text="目前時間", bg=COLORS["panel"], fg=COLORS["text"],
+            font=("Microsoft JhengHei UI", 10, "bold"),
+        ).pack(side="left", padx=(0, 8))
+        overview_note = ttk.Entry(
+            overview_row, textvariable=overview_note_var, width=35,
+        )
+        overview_note.pack(side="left")
+        overview_note.bind(
+            "<Return>",
+            lambda _e: self.save_overview_note(axis, overview_note_var),
+        )
+        overview_note.bind(
+            "<FocusOut>",
+            lambda _e: self.save_overview_note(axis, overview_note_var),
+        )
 
         rows = axis.axis_rows or [{
             "c": axis.c_text,
@@ -1105,16 +1134,36 @@ class AxisEditor(tk.Tk):
                 button.pack(side="left", padx=4, pady=7)
                 row_buttons.append(button)
                 all_view_buttons.append(button)
+            note_var = tk.StringVar(value=str(row.get("note", "")))
+            note_entry = ttk.Entry(zone, textvariable=note_var, width=18)
+            note_entry.pack(side="right", padx=6, pady=7)
+            note_entry.bind(
+                "<Return>",
+                lambda _e, index=row_number, variable=note_var:
+                self.save_view_note(axis, rows, index, variable),
+            )
+            note_entry.bind(
+                "<FocusOut>",
+                lambda _e, index=row_number, variable=note_var:
+                self.save_view_note(axis, rows, index, variable),
+            )
             finish.is_finished = False
             finish.configure(
                 command=lambda buttons=row_buttons, control=finish:
                 self.toggle_view_row(buttons, control)
             )
         reset_button.configure(
-            command=lambda: self.reset_view_buttons(all_view_buttons, finish_buttons)
+            command=lambda: self.reset_view_buttons(
+                all_view_buttons, finish_buttons, view_canvas,
+            )
         )
-        self.action_button(panel, "返回", self.show_list, "#8296a5").pack(
-            anchor="e", padx=30, pady=25)
+        view_actions = tk.Frame(panel, bg=COLORS["panel"])
+        view_actions.pack(anchor="e", padx=30, pady=25)
+        self.action_button(
+            view_actions, "編輯", lambda: self.show_editor(axis), COLORS["primary"],
+        ).pack(side="left")
+        self.action_button(view_actions, "返回", self.show_list, "#8296a5").pack(
+            side="left", padx=(7, 0))
 
     def toggle_view_item(self, button: tk.Button) -> None:
         button.is_gray = not button.is_gray
@@ -1129,8 +1178,38 @@ class AxisEditor(tk.Tk):
             button.configure(bg=color, activebackground=color)
         control.configure(bg="#3f4a51" if control.is_finished else "#657783")
 
+    def save_view_note(
+        self, axis: Axis, rows: list[dict], row_index: int,
+        variable: tk.StringVar,
+    ) -> None:
+        note = variable.get()
+        if rows[row_index].get("note", "") == note:
+            return
+        rows[row_index]["note"] = note
+        axis.axis_rows = rows
+        axes = self.store.load()
+        for index, saved_axis in enumerate(axes):
+            if saved_axis.id == axis.id:
+                axes[index] = axis
+                self.store.save(axes)
+                break
+
+    def save_overview_note(self, axis: Axis, variable: tk.StringVar) -> None:
+        note = variable.get()
+        if axis.view_note == note:
+            return
+        axis.view_note = note
+        self.view_note_value = note
+        axes = self.store.load()
+        for index, saved_axis in enumerate(axes):
+            if saved_axis.id == axis.id:
+                axes[index] = axis
+                self.store.save(axes)
+                break
+
     def reset_view_buttons(
         self, buttons: list[tk.Button], controls: list[tk.Button],
+        canvas: tk.Canvas,
     ) -> None:
         for button in buttons:
             button.is_gray = False
@@ -1140,6 +1219,7 @@ class AxisEditor(tk.Tk):
         for control in controls:
             control.is_finished = False
             control.configure(bg="#657783", activebackground="#4f606b")
+        canvas.yview_moveto(0)
 
     def open_url(self, url: str) -> None:
         target = url.strip()
