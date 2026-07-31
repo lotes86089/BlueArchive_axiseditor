@@ -24,6 +24,7 @@ RESOURCE_DIR = (
     else Path(__file__).resolve().parent
 )
 HOME_BACKGROUND = RESOURCE_DIR / "assets" / "home_background.png"
+APP_ICON = RESOURCE_DIR / "assets" / "app_icon.ico"
 
 COLORS = {
     "bg": "#eef7fb",
@@ -236,6 +237,10 @@ class AxisEditor(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Blue Archive 軸編輯器")
+        try:
+            self.iconbitmap(default=str(APP_ICON))
+        except tk.TclError:
+            pass
         self.geometry("1040x760")
         self.minsize(850, 620)
         self.configure(bg=COLORS["bg"])
