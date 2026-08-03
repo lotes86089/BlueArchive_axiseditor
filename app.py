@@ -1288,7 +1288,6 @@ class AxisEditor(tk.Tk):
                 )
             filter_button.pack(side="left", padx=(4, 14))
         self.tower_filter_options = tk.Frame(body, bg=COLORS["bg"])
-        self.tower_filter_options.pack(fill="x", pady=(8, 8))
         self.axis_cards = tk.Frame(body, bg=COLORS["bg"])
         self.axis_cards.pack(fill="both", expand=True)
         self.update_list_tower_filters(axes, reset=False)
@@ -1299,6 +1298,9 @@ class AxisEditor(tk.Tk):
         for child in self.tower_filter_options.winfo_children():
             child.destroy()
         if self.show_tower_var.get():
+            self.tower_filter_options.pack(
+                fill="x", pady=(8, 8), before=self.axis_cards,
+            )
             boss_row = tk.Frame(self.tower_filter_options, bg=COLORS["bg"])
             boss_row.pack(fill="x", pady=2)
             tk.Label(
@@ -1329,6 +1331,8 @@ class AxisEditor(tk.Tk):
                         onvalue=armor, offvalue="",
                         command=lambda: self.render_axis_cards(axes),
                     ).pack(side="left", padx=(4, 12))
+        else:
+            self.tower_filter_options.pack_forget()
         self.render_axis_cards(axes)
 
     def render_axis_cards(self, axes: list[Axis]) -> None:
