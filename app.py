@@ -49,6 +49,10 @@ COLORS = {
 }
 
 
+def mode_display_name(mode: str) -> str:
+    return "總力戰" if mode == "一般" else mode
+
+
 @dataclass
 class Axis:
     id: str
@@ -201,6 +205,40 @@ class PillEntry(tk.Frame):
         return items
 
 
+class AutoWrapText(tk.Text):
+    """Compact wrapped note field that grows with its content."""
+
+    def __init__(
+        self, master: tk.Misc, value: str = "", width: int = 18,
+        max_lines: int = 4, on_height_change=None,
+    ):
+        super().__init__(
+            master, width=width, height=1, wrap="word", undo=True,
+            bg="white", fg=COLORS["text"], insertbackground=COLORS["text"],
+            relief="solid", borderwidth=1, highlightthickness=0,
+            font=("Microsoft JhengHei UI", 9), padx=5, pady=3,
+        )
+        self.wrap_width = width
+        self.max_lines = max_lines
+        self.on_height_change = on_height_change
+        self.insert("1.0", value)
+        self.bind("<KeyRelease>", self.adjust_height, add="+")
+        self.after_idle(self.adjust_height)
+
+    def get_text(self) -> str:
+        return self.get("1.0", "end-1c")
+
+    def adjust_height(self, _event=None) -> None:
+        lines = 0
+        for logical_line in self.get_text().split("\n"):
+            lines += max(1, (len(logical_line) + self.wrap_width - 1) // self.wrap_width)
+        desired = min(self.max_lines, max(1, lines))
+        if int(self.cget("height")) != desired:
+            self.configure(height=desired)
+        if self.on_height_change:
+            self.on_height_change(desired)
+
+
 class DropZone(tk.Frame):
     def __init__(self, master: tk.Misc, values: list[str] | None = None):
         super().__init__(
@@ -254,6 +292,7 @@ class ScrollFrame(tk.Frame):
     def __init__(self, master: tk.Misc):
         super().__init__(master, bg=COLORS["bg"])
         canvas = tk.Canvas(self, bg=COLORS["bg"], highlightthickness=0)
+        self.canvas = canvas
         scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
         self.body = tk.Frame(canvas, bg=COLORS["bg"])
         window = canvas.create_window((0, 0), window=self.body, anchor="nw")
@@ -453,7 +492,7 @@ class AxisEditor(tk.Tk):
             self.home_background = None
 
         create_card = self.big_button(
-            canvas, "＋  新建立", "建立一般/考試/爬塔隊伍軸",
+            canvas, "＋  新建立", "建立總力戰/考試/爬塔隊伍軸",
             self.show_editor, HOME_CREATE_ICON,
         )
         view_card = self.big_button(
@@ -543,6 +582,9 @@ class AxisEditor(tk.Tk):
             phase: {
                 "axis_rows": list(data.get("axis_rows", [])),
                 "button_items": list(data.get("button_items", [])),
+                "view_note": str(data.get(
+                    "view_note", axis.view_note if axis and phase == "P1" else "",
+                )),
             }
             for phase, data in (axis.exam_phases if axis else {}).items()
         }
@@ -550,6 +592,9 @@ class AxisEditor(tk.Tk):
             phase: {
                 "axis_rows": list(data.get("axis_rows", [])),
                 "button_items": list(data.get("button_items", [])),
+                "view_note": str(data.get(
+                    "view_note", axis.view_note if axis and phase == "P1" else "",
+                )),
             }
             for phase, data in (axis.normal_phases if axis else {}).items()
         }
@@ -581,9 +626,9 @@ class AxisEditor(tk.Tk):
         self.armor_var = tk.StringVar(value=axis.armor if axis else "")
         choices = tk.Frame(meta, bg=COLORS["panel"])
         choices.pack(fill="x", pady=(5, 15))
-        for text in ("一般", "考試", "爬塔"):
+        for text, value in (("總力戰", "一般"), ("考試", "考試"), ("爬塔", "爬塔")):
             self.choice_checkbox(
-                choices, text=text, variable=self.mode_var, onvalue=text, offvalue="",
+                choices, text=text, variable=self.mode_var, onvalue=value, offvalue="",
                 command=self._mode_changed,
             ).pack(side="left", padx=(0, 24))
         self.tower_options = tk.Frame(meta, bg=COLORS["panel"])
@@ -708,22 +753,26 @@ class AxisEditor(tk.Tk):
             self._build_fields()
         if not self.normal_phases_enabled:
             self.normal_phases_enabled = True
-            self.normal_phases["P1"] = self.collect_editor_data()
-            self.normal_phases["P2"] = {"axis_rows": [], "button_items": []}
+            self.store_current_editor_phase(self.normal_phases)
+            self.normal_phases["P2"] = {
+                "axis_rows": [], "button_items": [], "view_note": "",
+            }
             self.current_exam_phase = "P2"
             self._build_fields()
             self.build_normal_phase_buttons()
             return
-        self.normal_phases[self.current_exam_phase] = self.collect_editor_data()
+        self.store_current_editor_phase(self.normal_phases)
         new_phase = next(
             (phase for phase in ("P1", "P2", "P3", "P4")
              if phase not in self.normal_phases),
             None,
         )
         if new_phase is None:
-            messagebox.showinfo("已達上限", "一般軸最多可建立 P1～P4 四組子軸。")
+            messagebox.showinfo("已達上限", "總力戰軸最多可建立 P1～P4 四組子軸。")
             return
-        self.normal_phases[new_phase] = {"axis_rows": [], "button_items": []}
+        self.normal_phases[new_phase] = {
+            "axis_rows": [], "button_items": [], "view_note": "",
+        }
         self.current_exam_phase = new_phase
         self._build_fields()
         self.build_normal_phase_buttons()
@@ -737,7 +786,7 @@ class AxisEditor(tk.Tk):
         ):
             return
         if phase != self.current_exam_phase and self.front_entries:
-            self.normal_phases[self.current_exam_phase] = self.collect_editor_data()
+            self.store_current_editor_phase(self.normal_phases)
         del self.normal_phases[phase]
         if phase == self.current_exam_phase:
             available = [
@@ -764,19 +813,28 @@ class AxisEditor(tk.Tk):
                     "c": row["c_var"].get().strip(),
                     "time": row["time_var"].get().strip(),
                     "items": list(row["zone"].values),
-                    "note": row["note_var"].get(),
+                    "note": row["note_widget"].get_text(),
                 })
         return {
             "axis_rows": rows,
             "button_items": self.front_entries[0].get_items() if self.front_entries else [],
         }
 
+    def store_current_editor_phase(self, phase_store: dict[str, dict]) -> None:
+        data = self.collect_editor_data()
+        existing = phase_store.get(self.current_exam_phase, {})
+        data["view_note"] = existing.get(
+            "view_note",
+            self.view_note_value if self.current_exam_phase == "P1" else "",
+        )
+        phase_store[self.current_exam_phase] = data
+
     def switch_exam_phase(self, phase: str) -> None:
         if phase == self.current_exam_phase:
             return
         phase_store = self.exam_phases if self.mode_var.get() == "考試" else self.normal_phases
         if self.front_entries:
-            phase_store[self.current_exam_phase] = self.collect_editor_data()
+            self.store_current_editor_phase(phase_store)
         self.current_exam_phase = phase
         phase_data = phase_store.get(phase, {})
         self._build_fields(
@@ -861,7 +919,7 @@ class AxisEditor(tk.Tk):
             ).grid(row=0, column=column, sticky="ew", padx=(0, 12), pady=(0, 5))
 
         rows_box = tk.Frame(
-            self.fields, bg="#f7fbfd", height=300, highlightthickness=2,
+            self.fields, bg="#f7fbfd", height=420, highlightthickness=2,
             highlightbackground=COLORS["border"],
         )
         rows_box.pack(fill="x")
@@ -904,13 +962,13 @@ class AxisEditor(tk.Tk):
                 self.add_axis_row(row)
     def add_axis_row_safe(self) -> None:
         if not self.front_entries:
-            messagebox.showinfo("尚未選擇類型", "請先選擇「一般」、「爬塔」或「考試」。")
+            messagebox.showinfo("尚未選擇類型", "請先選擇「總力戰」、「爬塔」或「考試」。")
             return
         self.add_axis_row()
 
     def add_transition_row_safe(self) -> None:
         if not self.front_entries:
-            messagebox.showinfo("尚未選擇類型", "請先選擇「一般」、「爬塔」或「考試」。")
+            messagebox.showinfo("尚未選擇類型", "請先選擇「總力戰」、「爬塔」或「考試」。")
             return
         self.add_transition_row()
 
@@ -930,22 +988,26 @@ class AxisEditor(tk.Tk):
             self.axis_table, text="☰", bg=COLORS["panel"], fg=COLORS["muted"],
             cursor="fleur", padx=7, font=("Arial", 13, "bold"),
         )
-        handle.grid(row=row_number, column=0, sticky="ns", pady=4)
+        handle.grid(row=row_number, column=0, sticky="ns", pady=1)
         time_entry.grid(
-            row=row_number, column=1, sticky="ew", padx=(0, 12), pady=4)
+            row=row_number, column=1, sticky="ew", padx=(0, 12), pady=1)
         c_entry = ttk.Entry(
             self.axis_table, textvariable=c_var, width=5, justify="center",
         )
         c_entry.bind("<KeyPress>", self.handle_entry_keypress)
         self.decimal_entries.add(c_entry)
-        c_entry.grid(row=row_number, column=2, sticky="ew", padx=(0, 12), pady=4)
+        c_entry.grid(row=row_number, column=2, sticky="ew", padx=(0, 12), pady=1)
         axis_cell = tk.Frame(self.axis_table, bg=COLORS["panel"])
-        axis_cell.grid(row=row_number, column=3, sticky="ew", pady=4)
+        axis_cell.grid(row=row_number, column=3, sticky="ew", pady=1)
         zone = DropZone(axis_cell, list(data.get("items", [])))
         zone.pack(side="left", fill="x", expand=True)
-        note_var = tk.StringVar(value=str(data.get("note", "")))
-        note_entry = ttk.Entry(zone.items, textvariable=note_var, width=18)
-        note_entry.pack(side="right", padx=6)
+        note_entry = AutoWrapText(
+            zone.items, value=str(data.get("note", "")), width=18,
+            on_height_change=lambda lines, container=zone: container.configure(
+                height=max(44, 24 * lines + 12),
+            ),
+        )
+        note_entry.pack(side="right", padx=6, pady=3)
         delete_button = tk.Button(
             axis_cell, text="X", cursor="hand2", bg=COLORS["danger"], fg="white",
             activebackground="#bd3e4a", activeforeground="white", relief="flat",
@@ -961,7 +1023,7 @@ class AxisEditor(tk.Tk):
             "type": "axis", "c_var": c_var, "time_var": time_var, "zone": zone,
             "widgets": [handle, time_entry, c_entry, axis_cell],
             "anchor": axis_cell,
-            "note_var": note_var,
+            "note_widget": note_entry,
         }
         self.axis_layout.append(row_data)
         handle.bind("<ButtonPress-1>", lambda _e, row=row_data: self.start_row_drag(row))
@@ -1171,7 +1233,7 @@ class AxisEditor(tk.Tk):
     def save_axis(self) -> None:
         name, mode = self.name_var.get().strip(), self.mode_var.get()
         if not name or mode not in ("一般", "爬塔", "考試"):
-            messagebox.showinfo("尚未完成", "請輸入名稱並選擇「一般」、「爬塔」或「考試」。")
+            messagebox.showinfo("尚未完成", "請輸入名稱並選擇「總力戰」、「爬塔」或「考試」。")
             return
         if mode == "爬塔" and (not self.boss_var.get() or not self.armor_var.get()):
             messagebox.showinfo("尚未完成", "爬塔軸請選擇首領與裝甲類型。")
@@ -1179,13 +1241,13 @@ class AxisEditor(tk.Tk):
         editor_data = self.collect_editor_data()
         rows = editor_data["axis_rows"]
         if mode == "考試":
-            self.exam_phases[self.current_exam_phase] = editor_data
+            self.store_current_editor_phase(self.exam_phases)
             for phase in ("P1", "P2", "P3"):
                 self.exam_phases.setdefault(
-                    phase, {"axis_rows": [], "button_items": []},
+                    phase, {"axis_rows": [], "button_items": [], "view_note": ""},
                 )
         elif mode == "一般" and self.normal_phases_enabled:
-            self.normal_phases[self.current_exam_phase] = editor_data
+            self.store_current_editor_phase(self.normal_phases)
         first_axis_row = next((row for row in rows if row["type"] == "axis"), None)
         axis = Axis(
             id=self.editing_id or uuid4().hex,
@@ -1225,6 +1287,7 @@ class AxisEditor(tk.Tk):
         self.nav("看軸")
         scroll = ScrollFrame(self)
         scroll.pack(fill="both", expand=True)
+        self.list_scroll = scroll
         body = tk.Frame(scroll.body, bg=COLORS["bg"])
         body.pack(fill="both", expand=True, padx=55, pady=32)
         title_row = tk.Frame(body, bg=COLORS["bg"])
@@ -1258,7 +1321,7 @@ class AxisEditor(tk.Tk):
             font=("Microsoft JhengHei UI", 10, "bold"),
         ).pack(side="left")
         for text, variable in (
-            ("一般", self.show_normal_var),
+            ("總力戰", self.show_normal_var),
             ("考試", self.show_exam_var),
             ("爬塔", self.show_tower_var),
         ):
@@ -1268,7 +1331,7 @@ class AxisEditor(tk.Tk):
             )
             filter_button.configure(padx=5, pady=2)
             icon_path = {
-                "一般": NORMAL_RANK_ICON,
+                "總力戰": NORMAL_RANK_ICON,
                 "考試": EXAM_FILTER_ICON,
                 "爬塔": TOWER_FILTER_ICON,
             }[text]
@@ -1338,6 +1401,11 @@ class AxisEditor(tk.Tk):
     def render_axis_cards(self, axes: list[Axis]) -> None:
         for child in self.axis_cards.winfo_children():
             child.destroy()
+        self.list_all_axes = axes
+        self.visible_axis_cards = []
+        self.axis_card_drop_indicator = tk.Frame(
+            self.axis_cards, bg="#ef3340", height=4,
+        )
         selected_modes = set()
         if self.show_normal_var.get():
             selected_modes.add("一般")
@@ -1367,11 +1435,16 @@ class AxisEditor(tk.Tk):
             card = tk.Frame(self.axis_cards, bg=COLORS["panel"], highlightthickness=1,
                             highlightbackground=COLORS["border"])
             card.pack(fill="x", pady=7)
+            handle = tk.Label(
+                card, text="☰", bg=COLORS["panel"], fg=COLORS["muted"],
+                cursor="fleur", padx=8, font=("Arial", 15, "bold"),
+            )
+            handle.pack(side="left", fill="y", padx=(8, 0), pady=10)
             info = tk.Frame(card, bg=COLORS["panel"])
             info.pack(side="left", fill="both", expand=True, padx=18, pady=13)
             tk.Label(info, text=axis.name, bg=COLORS["panel"], fg=COLORS["text"],
                      font=("Microsoft JhengHei UI", 13, "bold")).pack(anchor="w")
-            description = axis.mode
+            description = mode_display_name(axis.mode)
             if axis.mode == "爬塔" and axis.tower_boss:
                 description += f"  ·  {axis.tower_boss}"
                 if axis.armor:
@@ -1394,6 +1467,93 @@ class AxisEditor(tk.Tk):
                                COLORS["primary"]).pack(side="left", padx=5)
             self.action_button(actions, "刪除", lambda a=axis: self.delete_axis(a),
                                COLORS["danger"]).pack(side="left")
+            card_data = {"axis": axis, "card": card, "handle": handle}
+            self.visible_axis_cards.append(card_data)
+            handle.bind(
+                "<ButtonPress-1>",
+                lambda _e, item=card_data: self.start_axis_card_drag(item),
+            )
+            handle.bind(
+                "<B1-Motion>",
+                lambda e, item=card_data: self.preview_axis_card_drop(e, item),
+            )
+            handle.bind(
+                "<ButtonRelease-1>",
+                lambda e, item=card_data: self.finish_axis_card_drag(e, item),
+            )
+
+    def start_axis_card_drag(self, item: dict) -> None:
+        self.dragged_axis_card = item
+        item["handle"].configure(bg=COLORS["tag"], fg=COLORS["primary"])
+
+    def axis_card_drop_target(
+        self, y_root: int, item: dict,
+    ) -> tuple[list[dict], int, int]:
+        remaining = [
+            candidate for candidate in self.visible_axis_cards
+            if candidate is not item
+        ]
+        target_index = len(remaining)
+        line_y = 0
+        for index, candidate in enumerate(remaining):
+            card = candidate["card"]
+            midpoint = card.winfo_rooty() + card.winfo_height() // 2
+            if y_root < midpoint:
+                target_index = index
+                line_y = card.winfo_y()
+                break
+        else:
+            if remaining:
+                last = remaining[-1]["card"]
+                line_y = last.winfo_y() + last.winfo_height() + 7
+        return remaining, target_index, line_y
+
+    def preview_axis_card_drop(self, event: tk.Event, item: dict) -> None:
+        canvas = self.list_scroll.canvas
+        canvas_top = canvas.winfo_rooty()
+        canvas_bottom = canvas_top + canvas.winfo_height()
+        if event.y_root < canvas_top + 36:
+            canvas.yview_scroll(-1, "units")
+            self.update_idletasks()
+        elif event.y_root > canvas_bottom - 36:
+            canvas.yview_scroll(1, "units")
+            self.update_idletasks()
+        _remaining, _target, line_y = self.axis_card_drop_target(
+            event.y_root, item,
+        )
+        self.axis_card_drop_indicator.place(
+            x=0, y=max(0, line_y - 2),
+            width=max(20, self.axis_cards.winfo_width()), height=4,
+        )
+        self.axis_card_drop_indicator.lift()
+
+    def finish_axis_card_drag(self, event: tk.Event, item: dict) -> None:
+        if item not in self.visible_axis_cards:
+            return
+        item["handle"].configure(bg=COLORS["panel"], fg=COLORS["muted"])
+        remaining, target_index, _line_y = self.axis_card_drop_target(
+            event.y_root, item,
+        )
+        remaining.insert(target_index, item)
+        old_order = [entry["axis"].id for entry in self.visible_axis_cards]
+        new_order = [entry["axis"] for entry in remaining]
+        self.axis_card_drop_indicator.place_forget()
+        if [axis.id for axis in new_order] == old_order:
+            return
+        visible_ids = set(old_order)
+        visible_positions = [
+            index for index, axis in enumerate(self.list_all_axes)
+            if axis.id in visible_ids
+        ]
+        for position, axis in zip(visible_positions, new_order):
+            self.list_all_axes[position] = axis
+        try:
+            self.store.save(self.list_all_axes)
+        except OSError as error:
+            messagebox.showerror("排序儲存失敗", str(error))
+            self.render_axis_cards(self.list_all_axes)
+            return
+        self.render_axis_cards(self.list_all_axes)
 
     def show_view(self, axis: Axis, exam_phase: str = "P1") -> None:
         self.clear_window()
@@ -1411,7 +1571,7 @@ class AxisEditor(tk.Tk):
             header, text=axis.name, bg=COLORS["panel"], fg=COLORS["text"],
             font=("Microsoft JhengHei UI", 22, "bold"),
         ).pack(side="left")
-        categories = [axis.mode]
+        categories = [mode_display_name(axis.mode)]
         if axis.mode == "爬塔" and axis.tower_boss:
             categories.append(axis.tower_boss)
             if axis.armor:
@@ -1428,7 +1588,20 @@ class AxisEditor(tk.Tk):
             )
             link.pack(anchor="w", padx=30, pady=(0, 15))
             link.bind("<Button-1>", lambda _e, url=axis.url: self.open_url(url))
-        overview_note_var = tk.StringVar(value=axis.view_note)
+        has_subaxes = axis.mode == "考試" or (
+            axis.mode == "一般" and bool(axis.normal_phases)
+        )
+        phase_store = (
+            axis.exam_phases if axis.mode == "考試" else axis.normal_phases
+        ) if has_subaxes else {}
+        phase_data = phase_store.get(exam_phase, {}) if has_subaxes else {}
+        current_time = (
+            phase_data.get(
+                "view_note", axis.view_note if exam_phase == "P1" else "",
+            )
+            if has_subaxes else axis.view_note
+        )
+        overview_note_var = tk.StringVar(value=current_time)
         overview_row = tk.Frame(panel, bg=COLORS["panel"])
         overview_row.pack(fill="x", padx=30, pady=(0, 15))
         tk.Label(
@@ -1439,16 +1612,22 @@ class AxisEditor(tk.Tk):
             overview_row, textvariable=overview_note_var, width=35,
         )
         overview_note.pack(side="left")
+        overview_note.bind("<KeyPress>", self.handle_entry_keypress)
+        self.decimal_entries.add(overview_note)
         overview_note.bind(
             "<Return>",
-            lambda _e: self.save_overview_note(axis, overview_note_var),
+            lambda _e: self.save_overview_note(
+                axis, overview_note_var, exam_phase,
+            ),
         )
         overview_note.bind(
             "<FocusOut>",
-            lambda _e: self.save_overview_note(axis, overview_note_var),
+            lambda _e: self.save_overview_note(
+                axis, overview_note_var, exam_phase,
+            ),
         )
 
-        if axis.mode == "考試" or (axis.mode == "一般" and axis.normal_phases):
+        if has_subaxes:
             phase_bar = tk.Frame(panel, bg=COLORS["panel"])
             phase_bar.pack(fill="x", padx=30, pady=(0, 12))
             tk.Label(
@@ -1466,7 +1645,6 @@ class AxisEditor(tk.Tk):
                     lambda value=phase: self.show_view(axis, value),
                     COLORS["primary"] if phase == exam_phase else "#8296a5",
                 ).pack(side="left", padx=(5, 0))
-            phase_store = axis.exam_phases if axis.mode == "考試" else axis.normal_phases
             rows = phase_store.get(exam_phase, {}).get("axis_rows", [])
         else:
             rows = axis.axis_rows or [{
@@ -1495,7 +1673,7 @@ class AxisEditor(tk.Tk):
             ).grid(row=0, column=column, sticky="ew", padx=(0, 12), pady=(0, 7))
 
         view_rows_box = tk.Frame(
-            panel, bg="#f7fbfd", height=300, highlightthickness=2,
+            panel, bg="#f7fbfd", height=420, highlightthickness=2,
             highlightbackground=COLORS["border"],
         )
         view_rows_box.pack(fill="x", padx=30)
@@ -1540,26 +1718,26 @@ class AxisEditor(tk.Tk):
                 activebackground="#4f606b", activeforeground="white", relief="flat",
                 padx=8, pady=5, font=("Arial", 9, "bold"),
             )
-            finish.grid(row=row_number, column=0, sticky="ew", padx=(0, 8), pady=4)
+            finish.grid(row=row_number, column=0, sticky="ew", padx=(0, 8), pady=1)
             finish_buttons.append(finish)
             for column, value in enumerate((row.get("time", ""), row.get("c", ""))):
                 field_frame = tk.Frame(
                     table, bg="#f7fbfd", highlightthickness=1,
                     highlightbackground=COLORS["border"],
-                    width=55 if column == 1 else 90, height=38,
+                    width=55 if column == 1 else 90, height=34,
                 )
                 field_frame.grid(row=row_number, column=column + 1, sticky="ew",
-                                 padx=(0, 12), pady=4)
+                                 padx=(0, 12), pady=1)
                 field_frame.grid_propagate(False)
                 tk.Label(
                     field_frame, text=value, bg="#f7fbfd", fg=COLORS["text"],
                     font=("Microsoft JhengHei UI", 9),
                 ).place(relx=.5, rely=.5, anchor="center")
             zone = tk.Frame(
-                table, bg="#f7fbfd", height=48, highlightthickness=2,
+                table, bg="#f7fbfd", height=44, highlightthickness=2,
                 highlightbackground=COLORS["border"],
             )
-            zone.grid(row=row_number, column=3, sticky="ew", pady=4)
+            zone.grid(row=row_number, column=3, sticky="ew", pady=1)
             zone.grid_propagate(False)
             row_buttons = []
             for raw_item in row.get("items", []):
@@ -1578,18 +1756,17 @@ class AxisEditor(tk.Tk):
                 button.pack(side="left", padx=4, pady=7)
                 row_buttons.append(button)
                 all_view_buttons.append(button)
-            note_var = tk.StringVar(value=str(row.get("note", "")))
-            note_entry = ttk.Entry(zone, textvariable=note_var, width=18)
-            note_entry.pack(side="right", padx=6, pady=7)
-            note_entry.bind(
-                "<Return>",
-                lambda _e, index=row_number, variable=note_var:
-                self.save_view_note(axis, rows, index, variable, exam_phase),
+            note_entry = AutoWrapText(
+                zone, value=str(row.get("note", "")), width=18,
+                on_height_change=lambda lines, container=zone: container.configure(
+                    height=max(44, 24 * lines + 12),
+                ),
             )
+            note_entry.pack(side="right", padx=6, pady=3)
             note_entry.bind(
                 "<FocusOut>",
-                lambda _e, index=row_number, variable=note_var:
-                self.save_view_note(axis, rows, index, variable, exam_phase),
+                lambda _e, index=row_number, widget=note_entry:
+                self.save_view_note(axis, rows, index, widget, exam_phase),
             )
             finish.is_finished = False
             finish.configure(
@@ -1624,9 +1801,9 @@ class AxisEditor(tk.Tk):
 
     def save_view_note(
         self, axis: Axis, rows: list[dict], row_index: int,
-        variable: tk.StringVar, exam_phase: str = "",
+        note_widget: AutoWrapText, exam_phase: str = "",
     ) -> None:
-        note = variable.get()
+        note = note_widget.get_text()
         if rows[row_index].get("note", "") == note:
             return
         rows[row_index]["note"] = note
@@ -1645,12 +1822,26 @@ class AxisEditor(tk.Tk):
                 self.store.save(axes)
                 break
 
-    def save_overview_note(self, axis: Axis, variable: tk.StringVar) -> None:
+    def save_overview_note(
+        self, axis: Axis, variable: tk.StringVar, exam_phase: str = "",
+    ) -> None:
         note = variable.get()
-        if axis.view_note == note:
-            return
-        axis.view_note = note
-        self.view_note_value = note
+        has_subaxes = axis.mode == "考試" or (
+            axis.mode == "一般" and bool(axis.normal_phases)
+        )
+        if has_subaxes and exam_phase:
+            phase_store = (
+                axis.exam_phases if axis.mode == "考試" else axis.normal_phases
+            )
+            phase_data = phase_store.setdefault(exam_phase, {})
+            if phase_data.get("view_note", "") == note:
+                return
+            phase_data["view_note"] = note
+        else:
+            if axis.view_note == note:
+                return
+            axis.view_note = note
+            self.view_note_value = note
         axes = self.store.load()
         for index, saved_axis in enumerate(axes):
             if saved_axis.id == axis.id:
