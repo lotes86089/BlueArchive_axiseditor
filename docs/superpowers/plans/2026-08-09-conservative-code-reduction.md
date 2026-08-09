@@ -206,7 +206,7 @@ Expected: no matches.
 
 - [ ] **Step 1: Run a GUI smoke check without entering the event loop**
 
-Run: `python -c "import app; ui=app.AxisEditor(); ui.update(); ui.show_editor(); ui.update(); ui.show_axes(); ui.update(); ui.destroy(); print('GUI_SMOKE_OK')"`
+Run: `python -c "import app; ui=app.AxisEditor(); ui.update(); ui.show_editor(); ui.update(); ui.show_list(); ui.update(); ui.destroy(); print('GUI_SMOKE_OK')"`
 
 Expected: prints `GUI_SMOKE_OK` with no Tkinter exception.
 
