@@ -565,6 +565,19 @@ class AxisEditor(tk.Tk):
                  font=("Microsoft JhengHei UI", 9)).pack(pady=(0, 18))
         return card
 
+    @staticmethod
+    def _normalize_phases(source: dict, legacy_view_note: str) -> dict:
+        return {
+            phase: {
+                "axis_rows": list(data.get("axis_rows", [])),
+                "button_items": list(data.get("button_items", [])),
+                "view_note": str(data.get(
+                    "view_note", legacy_view_note if phase == "P1" else "",
+                )),
+            }
+            for phase, data in source.items()
+        }
+
     def show_editor(self, axis: Axis | None = None) -> None:
         self.clear_window()
         # Widgets from the previous editor page have been destroyed by clear_window,
@@ -578,26 +591,13 @@ class AxisEditor(tk.Tk):
         self.nav("新建立")
         self.editing_id = axis.id if axis else None
         self.view_note_value = axis.view_note if axis else ""
-        self.exam_phases = {
-            phase: {
-                "axis_rows": list(data.get("axis_rows", [])),
-                "button_items": list(data.get("button_items", [])),
-                "view_note": str(data.get(
-                    "view_note", axis.view_note if axis and phase == "P1" else "",
-                )),
-            }
-            for phase, data in (axis.exam_phases if axis else {}).items()
-        }
-        self.normal_phases = {
-            phase: {
-                "axis_rows": list(data.get("axis_rows", [])),
-                "button_items": list(data.get("button_items", [])),
-                "view_note": str(data.get(
-                    "view_note", axis.view_note if axis and phase == "P1" else "",
-                )),
-            }
-            for phase, data in (axis.normal_phases if axis else {}).items()
-        }
+        legacy_view_note = axis.view_note if axis else ""
+        self.exam_phases = self._normalize_phases(
+            axis.exam_phases if axis else {}, legacy_view_note,
+        )
+        self.normal_phases = self._normalize_phases(
+            axis.normal_phases if axis else {}, legacy_view_note,
+        )
         self.normal_phases_enabled = bool(self.normal_phases)
         self.current_exam_phase = "P1"
         scroll = ScrollFrame(self)
