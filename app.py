@@ -366,7 +366,6 @@ class AxisEditor(tk.Tk):
         self.store = AxisStore()
         self.editing_id: str | None = None
         self.front_entries: list[PillEntry] = []
-        self.back_entries: list[PillEntry] = []
         self.drop_zones: list[DropZone] = []
         self.c_vars: list[tk.StringVar] = []
         self.time_vars: list[tk.StringVar] = []
@@ -583,7 +582,6 @@ class AxisEditor(tk.Tk):
         # Widgets from the previous editor page have been destroyed by clear_window,
         # so their cached references must also be reset before mode selection.
         self.front_entries = []
-        self.back_entries = []
         self.drop_zones = []
         self.c_vars = []
         self.time_vars = []
@@ -889,7 +887,7 @@ class AxisEditor(tk.Tk):
     def _build_fields(self, front=None, back=None, axis_rows=None, button_items=None) -> None:
         for child in self.fields.winfo_children():
             child.destroy()
-        self.front_entries, self.back_entries = [], []
+        self.front_entries = []
         # Flatten data created by earlier versions so saved axes remain editable.
         previous_values = [
             value
@@ -1088,19 +1086,15 @@ class AxisEditor(tk.Tk):
             transition, text="轉場", bg=COLORS["panel"], fg=COLORS["danger"],
             font=("Microsoft JhengHei UI", 12, "bold"), pady=8,
         ).pack(side="left", fill="x", expand=True)
+        row_data = {
+            "type": "transition", "widget": transition, "anchor": transition,
+        }
         tk.Button(
-            transition, text="X", command=lambda: self.delete_transition_row(row_data),
+            transition, text="X", command=lambda row=row_data: self.delete_transition_row(row),
             cursor="hand2", bg=COLORS["danger"], fg="white",
             activebackground="#bd3e4a", activeforeground="white", relief="flat",
             padx=10, pady=5, font=("Arial", 10, "bold"),
         ).pack(side="right")
-        row_data = {
-            "type": "transition", "widget": transition, "anchor": transition,
-        }
-        # The button command closes over row_data and runs only after construction.
-        for child in transition.winfo_children():
-            if isinstance(child, tk.Button):
-                child.configure(command=lambda row=row_data: self.delete_transition_row(row))
         self.axis_layout.append(row_data)
 
     def delete_transition_row(self, row: dict) -> None:
@@ -1110,7 +1104,6 @@ class AxisEditor(tk.Tk):
         self.relayout_axis_rows()
 
     def start_row_drag(self, row: dict) -> None:
-        self.dragged_axis_row = row
         row["widgets"][0].configure(bg=COLORS["tag"], fg=COLORS["primary"])
         self.axis_rows_canvas.configure(cursor="fleur")
 
@@ -1254,7 +1247,7 @@ class AxisEditor(tk.Tk):
             name=name,
             mode=mode,
             front=[entry.get_values() for entry in self.front_entries],
-            back=[entry.get_values() for entry in self.back_entries],
+            back=[],
             c_text=first_axis_row["c"] if first_axis_row else "",
             time_text=first_axis_row["time"] if first_axis_row else "",
             c_items=first_axis_row["items"] if first_axis_row else [],
@@ -1483,7 +1476,6 @@ class AxisEditor(tk.Tk):
             )
 
     def start_axis_card_drag(self, item: dict) -> None:
-        self.dragged_axis_card = item
         item["handle"].configure(bg=COLORS["tag"], fg=COLORS["primary"])
 
     def axis_card_drop_target(
