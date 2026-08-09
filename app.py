@@ -1799,6 +1799,14 @@ class AxisEditor(tk.Tk):
             button.configure(bg=color, activebackground=color)
         control.configure(bg="#3f4a51" if control.is_finished else "#657783")
 
+    def _persist_axis(self, axis: Axis) -> None:
+        axes = self.store.load()
+        for index, saved_axis in enumerate(axes):
+            if saved_axis.id == axis.id:
+                axes[index] = axis
+                self.store.save(axes)
+                break
+
     def save_view_note(
         self, axis: Axis, rows: list[dict], row_index: int,
         note_widget: AutoWrapText, exam_phase: str = "",
@@ -1815,12 +1823,7 @@ class AxisEditor(tk.Tk):
             phase_data["axis_rows"] = rows
         else:
             axis.axis_rows = rows
-        axes = self.store.load()
-        for index, saved_axis in enumerate(axes):
-            if saved_axis.id == axis.id:
-                axes[index] = axis
-                self.store.save(axes)
-                break
+        self._persist_axis(axis)
 
     def save_overview_note(
         self, axis: Axis, variable: tk.StringVar, exam_phase: str = "",
@@ -1842,12 +1845,7 @@ class AxisEditor(tk.Tk):
                 return
             axis.view_note = note
             self.view_note_value = note
-        axes = self.store.load()
-        for index, saved_axis in enumerate(axes):
-            if saved_axis.id == axis.id:
-                axes[index] = axis
-                self.store.save(axes)
-                break
+        self._persist_axis(axis)
 
     def reset_view_buttons(
         self, buttons: list[tk.Button], controls: list[tk.Button],
