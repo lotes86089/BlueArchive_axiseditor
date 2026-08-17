@@ -1670,6 +1670,20 @@ class AxisEditor(tk.Tk):
         )
         view_rows_box.pack(fill="x", padx=30)
         view_rows_box.pack_propagate(False)
+
+        def resize_view_rows_box() -> None:
+            if not view_rows_box.winfo_exists():
+                return
+            box_top = view_rows_box.winfo_rooty() - scroll.canvas.winfo_rooty()
+            available_height = scroll.canvas.winfo_height() - box_top - 90
+            view_rows_box.configure(height=max(420, available_height))
+
+        scroll.canvas.bind(
+            "<Configure>",
+            lambda _e: self.after_idle(resize_view_rows_box),
+            add="+",
+        )
+        self.after_idle(resize_view_rows_box)
         view_canvas = tk.Canvas(view_rows_box, bg="#f7fbfd", highlightthickness=0)
         view_scroll = ttk.Scrollbar(
             view_rows_box, orient="vertical", command=view_canvas.yview,
