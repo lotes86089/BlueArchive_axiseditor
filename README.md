@@ -11,6 +11,6 @@ py -3 -m pip install -r requirements.txt
 py -3 app.py
 ```
 
-或直接雙擊 `run.bat`。
+若要建立單一 EXE，請雙擊 `build_exe.bat`；此批次檔只會編譯，不會啟動程式。
 
 資料會以 UTF-8 JSON 格式儲存在同一資料夾的 `axes.json`。
