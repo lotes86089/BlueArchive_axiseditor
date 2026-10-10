@@ -1225,8 +1225,17 @@ class AxisEditor(tk.Tk):
 
     def save_axis(self) -> None:
         name, mode = self.name_var.get().strip(), self.mode_var.get()
-        if not name or mode not in ("一般", "爬塔", "考試"):
-            messagebox.showinfo("尚未完成", "請輸入名稱並選擇「總力戰」、「爬塔」或「考試」。")
+        url = self.url_var.get().strip()
+        missing_fields = []
+        if not name:
+            missing_fields.append("名稱（標題）")
+        if not url:
+            missing_fields.append("網址")
+        if missing_fields:
+            messagebox.showinfo("尚未完成", f"請輸入{'與'.join(missing_fields)}。")
+            return
+        if mode not in ("一般", "爬塔", "考試"):
+            messagebox.showinfo("尚未完成", "請選擇「總力戰」、「爬塔」或「考試」。")
             return
         if mode == "爬塔" and (not self.boss_var.get() or not self.armor_var.get()):
             messagebox.showinfo("尚未完成", "爬塔軸請選擇首領與裝甲類型。")
@@ -1254,7 +1263,7 @@ class AxisEditor(tk.Tk):
             time_items=[],
             axis_rows=rows,
             button_items=editor_data["button_items"],
-            url=self.url_var.get().strip(),
+            url=url,
             tower_boss=self.boss_var.get() if mode == "爬塔" else "",
             armor=self.armor_var.get() if mode == "爬塔" else "",
             view_note=self.view_note_value,

@@ -1,9 +1,36 @@
 import unittest
+from unittest.mock import patch
 
 from app import Axis, AxisEditor
 
 
 class RefactorTests(unittest.TestCase):
+    def test_save_requires_name_and_url(self):
+        class ValueStub:
+            def __init__(self, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+        editor = AxisEditor.__new__(AxisEditor)
+        editor.name_var = ValueStub("")
+        editor.url_var = ValueStub("")
+        editor.mode_var = ValueStub("一般")
+
+        with patch("app.messagebox.showinfo") as showinfo:
+            editor.save_axis()
+
+        showinfo.assert_called_once_with(
+            "尚未完成", "請輸入名稱（標題）與網址。",
+        )
+
+        editor.name_var = ValueStub("測試軸")
+        with patch("app.messagebox.showinfo") as showinfo:
+            editor.save_axis()
+
+        showinfo.assert_called_once_with("尚未完成", "請輸入網址。")
+
     def test_persist_axis_replaces_matching_id_without_appending(self):
         original = Axis(id="same", name="old", mode="一般", front=[], back=[])
         untouched = Axis(id="other", name="other", mode="一般", front=[], back=[])
