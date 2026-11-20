@@ -5,6 +5,7 @@ import ctypes
 import sys
 import tkinter as tk
 import webbrowser
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from tkinter import colorchooser, messagebox, ttk
@@ -577,7 +578,33 @@ class AxisEditor(tk.Tk):
             for phase, data in source.items()
         }
 
-    def show_editor(self, axis: Axis | None = None) -> None:
+    @staticmethod
+    def _character_copy_template(axis: Axis) -> Axis:
+        def copy_phases(phases: dict[str, dict]) -> dict[str, dict]:
+            return {
+                phase: {
+                    "axis_rows": [],
+                    "button_items": deepcopy(data.get("button_items", [])),
+                    "view_note": "",
+                }
+                for phase, data in phases.items()
+            }
+
+        return Axis(
+            id="",
+            name="",
+            mode=axis.mode,
+            front=deepcopy(axis.front),
+            back=deepcopy(axis.back),
+            button_items=deepcopy(axis.button_items),
+            exam_phases=copy_phases(axis.exam_phases),
+            normal_phases=copy_phases(axis.normal_phases),
+        )
+
+    def copy_axis_characters(self, axis: Axis) -> None:
+        self.show_editor(self._character_copy_template(axis), as_copy=True)
+
+    def show_editor(self, axis: Axis | None = None, as_copy: bool = False) -> None:
         self.clear_window()
         # Widgets from the previous editor page have been destroyed by clear_window,
         # so their cached references must also be reset before mode selection.
@@ -587,7 +614,8 @@ class AxisEditor(tk.Tk):
         self.time_vars = []
         self.axis_layout = []
         self.nav("新建立")
-        self.editing_id = axis.id if axis else None
+        is_editing = axis is not None and not as_copy
+        self.editing_id = axis.id if is_editing else None
         self.view_note_value = axis.view_note if axis else ""
         legacy_view_note = axis.view_note if axis else ""
         self.exam_phases = self._normalize_phases(
@@ -603,7 +631,7 @@ class AxisEditor(tk.Tk):
         panel = tk.Frame(scroll.body, bg=COLORS["panel"], highlightthickness=1,
                          highlightbackground=COLORS["border"])
         panel.pack(fill="x", padx=55, pady=32)
-        tk.Label(panel, text="編輯軸" if axis else "新建立軸", bg=COLORS["panel"],
+        tk.Label(panel, text="編輯軸" if is_editing else "新建立軸", bg=COLORS["panel"],
                  fg=COLORS["text"], font=("Microsoft JhengHei UI", 22, "bold")).pack(
                      anchor="w", padx=30, pady=(25, 18))
 
@@ -611,17 +639,17 @@ class AxisEditor(tk.Tk):
         meta.pack(fill="x", padx=30)
         tk.Label(meta, text="名稱", bg=COLORS["panel"], fg=COLORS["text"],
                  font=("Microsoft JhengHei UI", 10, "bold")).pack(anchor="w")
-        self.name_var = tk.StringVar(value=axis.name if axis else "")
+        self.name_var = tk.StringVar(value=axis.name if is_editing else "")
         ttk.Entry(meta, textvariable=self.name_var).pack(fill="x", pady=(5, 15))
         tk.Label(meta, text="網址", bg=COLORS["panel"], fg=COLORS["text"],
                  font=("Microsoft JhengHei UI", 10, "bold")).pack(anchor="w")
-        self.url_var = tk.StringVar(value=axis.url if axis else "")
+        self.url_var = tk.StringVar(value=axis.url if is_editing else "")
         ttk.Entry(meta, textvariable=self.url_var).pack(fill="x", pady=(5, 15))
         tk.Label(meta, text="類型（擇一）", bg=COLORS["panel"], fg=COLORS["text"],
                  font=("Microsoft JhengHei UI", 10, "bold")).pack(anchor="w")
         self.mode_var = tk.StringVar(value=axis.mode if axis else "")
-        self.boss_var = tk.StringVar(value=axis.tower_boss if axis else "")
-        self.armor_var = tk.StringVar(value=axis.armor if axis else "")
+        self.boss_var = tk.StringVar(value=axis.tower_boss if is_editing else "")
+        self.armor_var = tk.StringVar(value=axis.armor if is_editing else "")
         choices = tk.Frame(meta, bg=COLORS["panel"])
         choices.pack(fill="x", pady=(5, 15))
         for text, value in (("總力戰", "一般"), ("考試", "考試"), ("爬塔", "爬塔")):
@@ -1465,6 +1493,9 @@ class AxisEditor(tk.Tk):
             actions.pack(side="right", padx=16, pady=16)
             self.action_button(actions, "查看", lambda a=axis: self.show_view(a),
                                "#3a9b84").pack(side="left")
+            self.action_button(
+                actions, "複製", lambda a=axis: self.copy_axis_characters(a), "#8296a5",
+            ).pack(side="left", padx=(5, 0))
             self.action_button(actions, "編輯", lambda a=axis: self.show_editor(a),
                                COLORS["primary"]).pack(side="left", padx=5)
             self.action_button(actions, "刪除", lambda a=axis: self.delete_axis(a),
@@ -1606,7 +1637,9 @@ class AxisEditor(tk.Tk):
         overview_row = tk.Frame(panel, bg=COLORS["panel"])
         overview_row.pack(fill="x", padx=30, pady=(0, 15))
         tk.Label(
-            overview_row, text="目前時間", bg=COLORS["panel"], fg=COLORS["text"],
+            overview_row,
+            text="確認日期" if axis.mode == "爬塔" else "目前時間",
+            bg=COLORS["panel"], fg=COLORS["text"],
             font=("Microsoft JhengHei UI", 10, "bold"),
         ).pack(side="left", padx=(0, 8))
         overview_note = ttk.Entry(
